@@ -1,0 +1,6 @@
+{
+  "name": "Calculadora Balística Airsoft",
+  "description": "Calculadora balística interactiva en tiempo real para airsoft con simulación de trayectoria, efecto hop-up (Magnus), elevación y Speed Drop Calculator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
