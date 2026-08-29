@@ -299,12 +299,14 @@ export function getWeightComparisons(currentInput: BallisticInput): WeightCompar
   }
   baseEnergyJ = Math.max(0.2, baseEnergyJ);
 
+  // Rampa ordinal de una sola tinta: cuanto más pesada la bola, más clara la
+  // línea. Codifica el orden del dato en vez de asignar un color arbitrario.
   const weightsToCompare = [
-    { weight: 0.20, label: '0.20g (CQB/Estándar)', color: '#38bdf8' }, // sky-400
-    { weight: 0.25, label: '0.25g (Asalto Ligero)', color: '#34d399' }, // emerald-400
-    { weight: 0.28, label: '0.28g (Asalto Óptimo)', color: '#fbbf24' }, // amber-400
-    { weight: 0.32, label: '0.32g (DMR / Pesada)', color: '#f97316' }, // orange-500
-    { weight: 0.40, label: '0.40g (Francotirador)', color: '#a855f7' }, // purple-500
+    { weight: 0.20, label: '0.20g (CQB/Estándar)', color: '#2b8f77' },
+    { weight: 0.25, label: '0.25g (Asalto Ligero)', color: '#2fae8c' },
+    { weight: 0.28, label: '0.28g (Asalto Óptimo)', color: '#3ccba2' },
+    { weight: 0.32, label: '0.32g (DMR / Pesada)', color: '#74e2c1' },
+    { weight: 0.40, label: '0.40g (Francotirador)', color: '#b3f3df' },
   ];
 
   return weightsToCompare.map(item => {

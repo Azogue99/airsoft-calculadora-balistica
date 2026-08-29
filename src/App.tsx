@@ -1,29 +1,16 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { 
-  Crosshair, 
-  Sparkles, 
-  HelpCircle, 
-  Share2, 
-  Sliders, 
-  FileText,
-  CheckCircle2,
-  AlertTriangle,
-  Target,
-  Zap,
-  Shield,
-  RotateCcw
-} from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { BallisticInput, ReplicaPreset } from './types';
 import { REPLICA_PRESETS } from './data/presets';
 import { simulateTrajectory, energyToVelocityMs, msToFps } from './physics/ballistics';
-import { Header } from './components/Header';
+import { Header, AppTab } from './components/Header';
 import { InputsPanel } from './components/InputsPanel';
 import { MetricsOverview } from './components/MetricsOverview';
 import { TrajectoryChart } from './components/TrajectoryChart';
 import { SpeedDropCalculator } from './components/SpeedDropCalculator';
 import { VolumetricOptimizer } from './components/VolumetricOptimizer';
 
-// Default initial ballistic state (Standard AEG 1.14J / 0.28g)
+// Estado balístico inicial (AEG estándar 1.14 J con bola de 0.28 g).
 const DEFAULT_INPUT: BallisticInput = {
   bbWeightG: 0.28,
   powerMode: 'velocity_fps',
@@ -31,7 +18,7 @@ const DEFAULT_INPUT: BallisticInput = {
   muzzleVelocityFps: 296,
   muzzleEnergyJ: 1.14,
   hopupPercent: 55,
-  initialHeightM: 1.50,
+  initialHeightM: 1.5,
   firingAngleDeg: 0,
   sightHeightCm: 4.5,
   zeroDistanceM: 35,
@@ -40,48 +27,40 @@ const DEFAULT_INPUT: BallisticInput = {
 
 export default function App() {
   const [input, setInput] = useState<BallisticInput>(DEFAULT_INPUT);
-  const [activeTab, setActiveTab] = useState<'ballistics' | 'volumetric'>('ballistics');
+  const [activeTab, setActiveTab] = useState<AppTab>('ballistics');
   const [activePresetId, setActivePresetId] = useState<string | null>('aeg_assault');
-  const [showTheoryModal, setShowTheoryModal] = useState<boolean>(false);
 
-  // Compute Ballistic Trajectory in real-time
-  const simulation = useMemo(() => {
-    return simulateTrajectory(input);
-  }, [input]);
+  const simulation = useMemo(() => simulateTrajectory(input), [input]);
 
-  // Handle Preset selection
   const handleSelectPreset = useCallback((preset: ReplicaPreset) => {
     setActivePresetId(preset.id);
     const vMs = energyToVelocityMs(preset.energyJ, preset.bbWeightG);
-    const vFps = msToFps(vMs);
 
-    setInput(prev => ({
+    setInput((prev) => ({
       ...prev,
       bbWeightG: preset.bbWeightG,
       muzzleEnergyJ: preset.energyJ,
       muzzleVelocityMs: Number(vMs.toFixed(1)),
-      muzzleVelocityFps: Number(vFps.toFixed(1)),
+      muzzleVelocityFps: Number(msToFps(vMs).toFixed(1)),
       hopupPercent: preset.hopupPercent,
       firingAngleDeg: 0,
-      initialHeightM: 1.50
+      initialHeightM: 1.5
     }));
   }, []);
 
-  // Handle Custom Input Changes
   const handleInputChange = useCallback((updater: (prev: BallisticInput) => BallisticInput) => {
-    setActivePresetId(null); // switched to custom
+    setActivePresetId(null); // pasa a configuración personalizada
     setInput(updater);
   }, []);
 
-  // Reset to default
   const handleReset = useCallback(() => {
     setInput(DEFAULT_INPUT);
     setActivePresetId('aeg_assault');
   }, []);
 
-  // Sync BB weight from Volumetric Optimizer to Ballistics
+  // Sincroniza el peso elegido en el optimizador volumétrico con la balística.
   const handleSyncBbWeight = useCallback((weightG: number) => {
-    setInput(prev => {
+    setInput((prev) => {
       const vMs = energyToVelocityMs(prev.muzzleEnergyJ, weightG);
       return {
         ...prev,
@@ -93,137 +72,113 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-emerald-500 selection:text-slate-950">
-      
-      {/* Top Header */}
-      <Header
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-      />
+    <div className="min-h-screen flex flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-3 focus:left-3
+                   focus:px-4 focus:py-2 focus:rounded-lg focus:bg-accent focus:text-on-accent
+                   focus:text-sm focus:font-semibold"
+      >
+        Saltar al contenido
+      </a>
 
-      {/* Main App Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5">
-        
+      <Header activeTab={activeTab} onTabChange={setActiveTab} />
+
+      <main
+        id="main-content"
+        className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4"
+      >
         {activeTab === 'ballistics' ? (
-          <>
-            {/* Presets Bar (Outside Header, matching the Volumetric Optimizer layout) */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg shadow-black/20">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse"></div>
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-white">
-                  CONFIGURACIONES PREESTABLECIDAS (PRESETS BALÍSTICOS)
-                </span>
-              </div>
+          <div
+            id="panel-ballistics"
+            role="tabpanel"
+            aria-labelledby="nav-tab-ballistics"
+            className="space-y-4"
+          >
+            {/* Presets */}
+            <section
+              aria-labelledby="presets-title"
+              className="card px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+            >
+              <h2 id="presets-title" className="label">
+                Presets
+              </h2>
 
-              <div className="flex items-center gap-1.5 flex-wrap text-xs font-mono">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {REPLICA_PRESETS.map((preset) => {
                   const isActive = activePresetId === preset.id;
                   return (
                     <button
                       key={preset.id}
                       id={`preset-btn-${preset.id}`}
+                      type="button"
                       onClick={() => handleSelectPreset(preset)}
                       title={preset.description}
-                      className={`px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
-                        isActive
-                          ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400 shadow-sm'
-                          : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700'
-                      }`}
+                      aria-pressed={isActive}
+                      className="chip"
                     >
-                      {preset.id === 'pistol' && <Shield className="w-3.5 h-3.5" />}
-                      {preset.id === 'aeg_assault' && <Target className="w-3.5 h-3.5" />}
-                      {preset.id === 'dmr' && <Zap className="w-3.5 h-3.5" />}
-                      {preset.id === 'sniper' && <Crosshair className="w-3.5 h-3.5" />}
                       <span>{preset.name.split('/')[0].trim()}</span>
-                      <span className={`text-[10px] ${isActive ? 'text-slate-950 font-bold' : 'text-emerald-400'}`}>
-                        {preset.energyJ}J
-                      </span>
+                      <span className="num opacity-70">{preset.energyJ.toFixed(2)} J</span>
                     </button>
                   );
                 })}
+
                 <button
                   id="reset-inputs-btn"
+                  type="button"
                   onClick={handleReset}
                   title="Restablecer valores por defecto"
-                  className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-colors ml-1"
+                  aria-label="Restablecer valores por defecto"
+                  className="chip"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
               </div>
-            </div>
+            </section>
 
-            {/* Top Summary Metrics Ribbon */}
-            <MetricsOverview
-              simulation={simulation}
-              input={input}
-            />
+            <MetricsOverview simulation={simulation} input={input} />
 
-            {/* Core Interactive Grid: Inputs on Left (Desktop), Charts on Right */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              
-              {/* Controls & Variables Column */}
-              <div className="lg:col-span-4 xl:col-span-4 space-y-5">
+            {/* Controles a la izquierda, visualizaciones a la derecha */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <div className="lg:col-span-5 xl:col-span-4 space-y-4 lg:sticky lg:top-20">
                 <InputsPanel
                   input={input}
                   onChange={handleInputChange}
-                  onNavigateToVolumetric={() => setActiveTab('volumetric')}
                   hopupState={simulation.hopupState}
                 />
-
-                {/* Quick Ballistic Tip Box */}
-                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-400 space-y-1.5 font-sans">
-                  <div className="flex items-center gap-1.5 text-emerald-400 font-bold font-mono">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Cálculo Balístico 100% Instantáneo</span>
-                  </div>
-                  <p>
-                    Todos los valores se recalculan en tiempo real mientras mueves los deslizadores. Ajusta el <strong>Hop-Up</strong> hasta obtener una curva plana con el máximo alcance efectivo.
-                  </p>
-                </div>
               </div>
 
-              {/* Visualizations Column */}
-              <div className="lg:col-span-8 xl:col-span-8 space-y-5">
-                
-                {/* 1. Real-time Trajectory Chart */}
-                <TrajectoryChart
-                  simulation={simulation}
-                  input={input}
-                />
-
-                {/* 2. Speed Drop Calculator & Comparative Chart */}
-                <SpeedDropCalculator
-                  simulation={simulation}
-                  input={input}
-                />
-
+              <div className="lg:col-span-7 xl:col-span-8 space-y-4 min-w-0">
+                <TrajectoryChart simulation={simulation} input={input} />
+                <SpeedDropCalculator simulation={simulation} input={input} />
               </div>
             </div>
-          </>
+          </div>
         ) : (
-          <VolumetricOptimizer
-            currentBbWeightG={input.bbWeightG}
-            onSyncBbWeight={handleSyncBbWeight}
-          />
+          <div id="panel-volumetric" role="tabpanel" aria-labelledby="nav-tab-volumetric">
+            <VolumetricOptimizer
+              currentBbWeightG={input.bbWeightG}
+              onSyncBbWeight={handleSyncBbWeight}
+            />
+          </div>
         )}
-
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950 py-4 mt-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-mono">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Calculadora Balística Airsoft &bull; 6mm Magnus Aerodynamics Engine</span>
-          </div>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span>Arrastre $C_d \approx 0.44$</span>
-            <span>Efecto Magnus $F_L$ con decaimiento de spin</span>
-            <span>Estándar 6mm (5.95mm)</span>
-          </div>
+      <footer className="mt-10 border-t border-line">
+        <div
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row
+                     items-center justify-between gap-3 text-[11px] text-ink-3"
+        >
+          <p>Calculadora balística airsoft · motor Magnus 6 mm</p>
+          <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
+            <li>
+              Arrastre C<sub>d</sub> ≈ 0.44
+            </li>
+            <li>Magnus con decaimiento de spin</li>
+            <li>Calibre 5.95 mm</li>
+          </ul>
         </div>
       </footer>
-
     </div>
   );
 }

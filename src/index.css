@@ -1,1 +1,460 @@
 @import "tailwindcss";
+
+/* ==========================================================================
+   SISTEMA DE DISEÑO
+   Un solo acento (menta). Dos colores semánticos (aviso / peligro).
+   Todo lo demás es neutro. El color se reserva para el dato activo,
+   nunca para decorar.
+   ========================================================================== */
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", monospace;
+
+  /* Superficies: 4 niveles, no 9 opacidades improvisadas */
+  --color-bg: #07090c;
+  --color-surface: #0d1116;
+  --color-surface-2: #12171e;
+  --color-surface-3: #1a212a;
+
+  /* Filetes: uno normal, uno de énfasis */
+  --color-line: #1e2530;
+  --color-line-2: #2b3543;
+
+  /* Texto: 3 niveles jerárquicos */
+  --color-ink: #e9edf2;
+  --color-ink-2: #98a3b0;
+  --color-ink-3: #7b8797;
+
+  /* Acento único */
+  --color-accent: #2fd8a4;
+  --color-accent-2: #7ceac9;
+  --color-on-accent: #04120e;
+
+  /* Semánticos: solo para estado, nunca decorativos */
+  --color-warn: #e0b155;
+  --color-danger: #ec6a76;
+
+  /* Rampa ordinal para series de datos (peso de bola: ligera → pesada).
+     Es una sola tinta con luminancia creciente, no un arcoíris. */
+  --color-s1: #2b8f77;
+  --color-s2: #2fae8c;
+  --color-s3: #3ccba2;
+  --color-s4: #74e2c1;
+  --color-s5: #b3f3df;
+
+  --radius-card: 16px;
+  --radius-control: 9px;
+}
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-weight: 450;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    /* Halo muy tenue tras la cabecera: profundidad sin ruido. */
+    background-image: radial-gradient(
+      110% 70% at 50% -15%,
+      rgb(47 216 164 / 0.055),
+      transparent 62%
+    );
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    color: var(--color-ink);
+  }
+
+  ::selection {
+    background-color: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* ==========================================================================
+   PRIMITIVAS
+   ========================================================================== */
+@layer components {
+  /* --- Superficies --- */
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  }
+
+  .card-inset {
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+  }
+
+  /* --- Tipografía con roles --- */
+
+  /* Micro-etiqueta: el único sitio donde se usan mayúsculas. */
+  .label {
+    font-size: 10.5px;
+    line-height: 1.25;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+  }
+
+  /* Título de panel. Sans, caja normal: los títulos ya no gritan. */
+  .panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-ink);
+  }
+
+  .panel-sub {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-ink-3);
+  }
+
+  /* Cifras: mono tabular. Reservado a números y códigos técnicos. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  .unit {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-ink-3);
+  }
+
+  /* --- Botón-ficha --- */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-height: 32px;
+    padding: 0.25rem 0.625rem;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--color-line);
+    background-color: var(--color-surface-2);
+    color: var(--color-ink-2);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .chip:hover {
+    background-color: var(--color-surface-3);
+    border-color: var(--color-line-2);
+    color: var(--color-ink);
+  }
+  .chip[aria-pressed="true"],
+  .chip[aria-checked="true"] {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-on-accent);
+    font-weight: 600;
+  }
+
+  /* Variante suave: para capas de la gráfica, donde un relleno sólido
+     competiría con los propios datos. */
+  .chip-ghost[aria-pressed="true"] {
+    background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
+    color: var(--color-accent-2);
+  }
+
+  /* --- Control segmentado --- */
+  .seg {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: 12px;
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+  }
+  .seg-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-height: 28px;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-ink-3);
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .seg-item:hover {
+    color: var(--color-ink);
+  }
+  .seg-item[aria-checked="true"] {
+    background-color: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+
+  /* --- Pestañas principales: subrayado, no relleno --- */
+  .tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0 0.25rem;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-ink-3);
+    transition: color 0.15s ease;
+  }
+  .tab:hover {
+    color: var(--color-ink-2);
+  }
+  .tab[aria-selected="true"] {
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+  .tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px;
+    background-color: var(--color-accent);
+  }
+
+  /* --- Campo numérico --- */
+  .field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-control);
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .field:focus-within {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
+  .field input {
+    padding: 0.375rem 0;
+    background: transparent;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+  .field input:focus {
+    outline: none;
+  }
+
+  /* --- Select --- */
+  .select {
+    width: 100%;
+    min-height: 38px;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-control);
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink);
+    font-size: 12px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
+
+  /* --- Tabla de datos --- */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    text-align: left;
+  }
+  .data-table thead th {
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-line);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+    white-space: nowrap;
+  }
+  .data-table tbody th,
+  .data-table tbody td {
+    padding: 0.5rem 0.75rem;
+    color: var(--color-ink-2);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .data-table tbody th {
+    color: var(--color-ink);
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .data-table tbody tr + tr {
+    border-top: 1px solid var(--color-line);
+  }
+  .data-table tbody tr:hover {
+    background-color: var(--color-surface-2);
+  }
+  .data-table tbody tr[aria-current="true"] {
+    background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+}
+
+/* ==========================================================================
+   SLIDERS
+   Los nativos con `appearance:none` no dibujan pista ni pulgar en Chromium.
+   ========================================================================== */
+.rng {
+  --rng-color: var(--color-accent);
+  --rng-fill: 50%;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 1.5rem; /* 24px de área táctil sobre una pista de 6px */
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.rng::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--rng-color) 0 var(--rng-fill),
+    var(--color-surface-3) var(--rng-fill) 100%
+  );
+}
+
+.rng::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 9999px;
+  background: var(--color-ink);
+  border: 3px solid var(--rng-color);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.6);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.rng:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+.rng:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+.rng:focus-visible {
+  outline: none;
+}
+.rng:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--rng-color) 35%, transparent);
+}
+
+.rng::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+}
+.rng::-moz-range-progress {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--rng-color);
+}
+.rng::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-ink);
+  border: 3px solid var(--rng-color);
+}
+.rng:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--rng-color) 35%, transparent);
+}
+
+/* ==========================================================================
+   UTILIDADES
+   ========================================================================== */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-2) transparent;
+}
+.scroll-x::-webkit-scrollbar {
+  height: 8px;
+}
+.scroll-x::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-x::-webkit-scrollbar-thumb {
+  background: var(--color-line-2);
+  border-radius: 9999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

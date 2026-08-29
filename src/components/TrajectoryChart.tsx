@@ -1,549 +1,531 @@
-import React, { useState, useRef, useMemo } from 'react';
-import { 
-  Maximize2, 
-  Eye, 
-  Crosshair, 
-  MapPin, 
-  Activity, 
-  ArrowUp, 
-  Sliders,
-  ShieldAlert,
-  Info
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 import { SimulationResult, BallisticInput, TrajectoryPoint } from '../types';
+import { RangeSlider } from './ui/RangeSlider';
+import { useElementWidth } from './ui/useElementWidth';
+import { formatCm } from './ui/format';
 
 interface TrajectoryChartProps {
   simulation: SimulationResult;
   input: BallisticInput;
 }
 
-export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
-  simulation,
-  input
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+// Tokens del sistema, usados directamente en atributos SVG.
+const C = {
+  accent: 'var(--color-accent)',
+  accent2: 'var(--color-accent-2)',
+  ink: 'var(--color-ink)',
+  ink2: 'var(--color-ink-2)',
+  ink3: 'var(--color-ink-3)',
+  line: 'var(--color-line)',
+  line2: 'var(--color-line-2)'
+};
+
+export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({ simulation, input }) => {
+  const { ref: containerRef, width: boxWidth } = useElementWidth<HTMLDivElement>(900);
+
   const [hoverPoint, setHoverPoint] = useState<TrajectoryPoint | null>(null);
+  const [hoverSide, setHoverSide] = useState<'left' | 'right'>('right');
   const [targetDistance, setTargetDistance] = useState<number>(30);
   const [showSightLine, setShowSightLine] = useState<boolean>(true);
   const [showEffectiveCorridor, setShowEffectiveCorridor] = useState<boolean>(true);
-  const [showGridNumbers, setShowGridNumbers] = useState<boolean>(true);
 
   const points = simulation.points;
   const maxRange = simulation.maxRangeM;
-  const apexHeight = simulation.apexHeightM;
 
-  // View bounds with nice round margins
-  const maxX = useMemo(() => {
-    const rawMax = Math.max(40, maxRange * 1.08);
-    return Math.ceil(rawMax / 10) * 10;
-  }, [maxRange]);
+  // El viewBox usa píxeles reales del contenedor: 1 unidad SVG = 1 px CSS,
+  // así el texto de los ejes conserva su tamaño en móvil.
+  const compact = boxWidth < 520;
+  const svgWidth = Math.max(240, boxWidth);
+  const svgHeight = compact
+    ? Math.round(Math.min(320, Math.max(260, svgWidth * 0.85)))
+    : Math.round(Math.min(440, Math.max(300, svgWidth * 0.47)));
 
-  const maxY = useMemo(() => {
-    const rawMax = Math.max(3.0, apexHeight * 1.35, input.initialHeightM + 0.8);
-    return Math.ceil(rawMax * 2) / 2; // round to nearest 0.5m
-  }, [apexHeight, input.initialHeightM]);
-
-  const minY = -0.3; // small margin below ground
-
-  // SVG Coordinate Conversion
-  const svgWidth = 900;
-  const svgHeight = 420;
-  const padLeft = 55;
-  const padRight = 35;
-  const padTop = 30;
-  const padBottom = 45;
+  const padLeft = compact ? 32 : 46;
+  const padRight = compact ? 14 : 28;
+  const padTop = compact ? 22 : 26;
+  const padBottom = compact ? 34 : 42;
+  const fontAxis = compact ? 10 : 11;
 
   const chartW = svgWidth - padLeft - padRight;
   const chartH = svgHeight - padTop - padBottom;
+
+  const maxX = useMemo(() => Math.ceil(Math.max(40, maxRange * 1.08) / 10) * 10, [maxRange]);
+  const maxY = useMemo(
+    () => Math.ceil(Math.max(3.0, simulation.apexHeightM * 1.35, input.initialHeightM + 0.8) * 2) / 2,
+    [simulation.apexHeightM, input.initialHeightM]
+  );
+  const minY = -0.3;
 
   const toSvgX = (xM: number) => padLeft + (xM / maxX) * chartW;
   const toSvgY = (yM: number) => padTop + chartH - ((yM - minY) / (maxY - minY)) * chartH;
   const groundY = toSvgY(0);
 
-  // SVG Path for trajectory
-  const trajectoryPathD = useMemo(() => {
-    if (!points || points.length === 0) return '';
-    return points.reduce((acc, pt, index) => {
-      const sx = toSvgX(pt.x);
-      const sy = toSvgY(pt.y);
-      return index === 0 ? `M ${sx},${sy}` : `${acc} L ${sx},${sy}`;
-    }, '');
-  }, [points, maxX, maxY]);
-
-  // SVG Path for Sight Line
-  const sightLinePathD = useMemo(() => {
-    if (!showSightLine || points.length === 0) return '';
+  // Recta de mira (lineal): pendiente entre el primer y el último punto.
+  const sightSlope = useMemo(() => {
+    if (points.length < 2) return 0;
     const p0 = points[0];
     const pEnd = points[points.length - 1];
-    const sx1 = toSvgX(0);
-    const sy1 = toSvgY(p0.sightLineY);
-    const sx2 = toSvgX(pEnd.x);
-    const sy2 = toSvgY(pEnd.sightLineY);
-    return `M ${sx1},${sy1} L ${sx2},${sy2}`;
-  }, [points, showSightLine, maxX, maxY]);
+    return pEnd.x > 0 ? (pEnd.sightLineY - p0.sightLineY) / pEnd.x : 0;
+  }, [points]);
+  const sightAt = (xM: number) => (points[0]?.sightLineY ?? 0) + sightSlope * xM;
 
-  // Find target point stats at targetDistance
+  const trajectoryPathD = useMemo(() => {
+    if (points.length === 0) return '';
+    return points
+      .map((pt, i) => `${i === 0 ? 'M' : 'L'} ${toSvgX(pt.x).toFixed(1)},${toSvgY(pt.y).toFixed(1)}`)
+      .join(' ');
+  }, [points, maxX, maxY, chartW, chartH, padLeft, padTop]);
+
+  const sightLinePathD = useMemo(() => {
+    if (!showSightLine || points.length === 0) return '';
+    const endX = points[points.length - 1].x;
+    return `M ${toSvgX(0)},${toSvgY(sightAt(0))} L ${toSvgX(endX)},${toSvgY(sightAt(endX))}`;
+  }, [points, showSightLine, maxX, maxY, chartW, chartH, padLeft, padTop, sightSlope]);
+
+  // Banda de ±15 cm alrededor de la línea de mira hasta el alcance efectivo.
+  const corridorPathD = useMemo(() => {
+    if (!showEffectiveCorridor || simulation.effectiveRangeM <= 5) return '';
+    const x1 = simulation.effectiveRangeM;
+    return [
+      `M ${toSvgX(0)},${toSvgY(sightAt(0) + 0.15)}`,
+      `L ${toSvgX(x1)},${toSvgY(sightAt(x1) + 0.15)}`,
+      `L ${toSvgX(x1)},${toSvgY(sightAt(x1) - 0.15)}`,
+      `L ${toSvgX(0)},${toSvgY(sightAt(0) - 0.15)}`,
+      'Z'
+    ].join(' ');
+  }, [
+    showEffectiveCorridor,
+    simulation.effectiveRangeM,
+    maxX,
+    maxY,
+    chartW,
+    chartH,
+    padLeft,
+    padTop,
+    sightSlope
+  ]);
+
   const targetPoint = useMemo(() => {
-    if (!points || points.length === 0) return null;
-    const clampedDist = Math.min(targetDistance, maxRange);
-    return points.reduce((prev, curr) => 
-      Math.abs(curr.x - clampedDist) < Math.abs(prev.x - clampedDist) ? curr : prev
+    if (points.length === 0) return null;
+    const clamped = Math.min(targetDistance, maxRange);
+    return points.reduce((prev, curr) =>
+      Math.abs(curr.x - clamped) < Math.abs(prev.x - clamped) ? curr : prev
     );
   }, [points, targetDistance, maxRange]);
 
-  // Grid steps
   const xTicks = useMemo(() => {
-    const step = maxX <= 50 ? 5 : maxX <= 100 ? 10 : 20;
+    const candidates = [5, 10, 20, 25, 50];
+    const step = candidates.find((s) => (s / maxX) * chartW >= 52) ?? 50;
     const ticks: number[] = [];
-    for (let x = 0; x <= maxX; x += step) {
-      ticks.push(x);
-    }
+    for (let x = 0; x <= maxX; x += step) ticks.push(x);
     return ticks;
-  }, [maxX]);
+  }, [maxX, chartW]);
 
   const yTicks = useMemo(() => {
     const step = maxY <= 3 ? 0.5 : 1.0;
     const ticks: number[] = [];
-    for (let y = 0; y <= maxY; y += step) {
-      ticks.push(Number(y.toFixed(1)));
-    }
+    for (let y = 0; y <= maxY; y += step) ticks.push(Number(y.toFixed(1)));
     return ticks;
   }, [maxY]);
 
-  // Mouse / Touch scrubber handler
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>) => {
-    if (!containerRef.current || points.length === 0) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+  const handlePointerMove = (
+    e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>
+  ) => {
+    const el = containerRef.current;
+    if (!el || points.length === 0) return;
+    const rect = el.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0]?.clientX : e.clientX;
+    if (clientX === undefined) return;
+
     const relX = clientX - rect.left;
+    setHoverSide(relX > rect.width / 2 ? 'left' : 'right');
+
     const svgX = (relX / rect.width) * svgWidth;
-    
-    // Map svgX back to distance in meters
     const distM = ((svgX - padLeft) / chartW) * maxX;
     if (distM < 0 || distM > maxRange) {
       setHoverPoint(null);
       return;
     }
-
-    // Find closest point
-    const closest = points.reduce((prev, curr) => 
-      Math.abs(curr.x - distM) < Math.abs(prev.x - distM) ? curr : prev
+    setHoverPoint(
+      points.reduce((prev, curr) =>
+        Math.abs(curr.x - distM) < Math.abs(prev.x - distM) ? curr : prev
+      )
     );
-    setHoverPoint(closest);
   };
 
-  const handleMouseLeave = () => {
-    setHoverPoint(null);
-  };
-
-  // Apex SVG coordinates
   const apexSvgX = toSvgX(simulation.apexDistanceM);
   const apexSvgY = toSvgY(simulation.apexHeightM);
+  const apexLabelAbove = apexSvgY - 20 > padTop;
+  const apexLabelY = apexLabelAbove ? apexSvgY - 11 : apexSvgY + 19;
+  const apexLabelX = Math.min(Math.max(apexSvgX, padLeft + 30), padLeft + chartW - 30);
+
+  const rangeSvgX = toSvgX(maxRange);
+  const rangeLabelAnchor: 'middle' | 'end' = rangeSvgX > padLeft + chartW - 30 ? 'end' : 'middle';
+
+  const sliderMax = Math.max(6, Math.min(100, Math.ceil(maxRange)));
+
+  const chartSummary =
+    `Trayectoria balística: alcance máximo ${maxRange} metros, ` +
+    `ápex de ${simulation.apexHeightM} metros a ${simulation.apexDistanceM} metros, ` +
+    `alcance efectivo ${simulation.effectiveRangeM} metros.`;
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-4 sm:p-5 shadow-xl shadow-slate-950/40 space-y-4">
-      
-      {/* Header & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800/80 pb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
-              Gráfica de Trayectoria Balística
-            </h3>
-          </div>
-          <p className="text-xs text-slate-400">
-            Eje Y: Altura (m) — Eje X: Distancia recorrida (m) en tiempo real
-          </p>
+    <section aria-labelledby="trajectory-title" className="card p-5">
+      {/* Cabecera */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-4 border-b border-line">
+        <div className="min-w-0">
+          <h2 id="trajectory-title" className="panel-title">
+            Trayectoria
+          </h2>
+          <p className="panel-sub mt-0.5">Altura sobre el suelo frente a distancia recorrida</p>
         </div>
 
-        {/* Layer Toggles */}
-        <div className="flex items-center gap-2 flex-wrap text-xs">
+        <div className="flex items-center gap-1.5 flex-wrap shrink-0">
           <button
             id="toggle-sightline-btn"
-            onClick={() => setShowSightLine(!showSightLine)}
-            className={`px-2.5 py-1 rounded-lg border font-mono transition-all flex items-center gap-1.5 ${
-              showSightLine
-                ? 'bg-rose-500/10 text-rose-300 border-rose-500/40'
-                : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-slate-400'
-            }`}
+            type="button"
+            onClick={() => setShowSightLine((v) => !v)}
+            aria-pressed={showSightLine}
+            className="chip chip-ghost"
           >
-            <span className="w-2 h-0.5 bg-rose-400 inline-block"></span>
-            Línea de Mira
+            Línea de mira
           </button>
-
           <button
             id="toggle-effective-btn"
-            onClick={() => setShowEffectiveCorridor(!showEffectiveCorridor)}
-            className={`px-2.5 py-1 rounded-lg border font-mono transition-all flex items-center gap-1.5 ${
-              showEffectiveCorridor
-                ? 'bg-sky-500/10 text-sky-300 border-sky-500/40'
-                : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-slate-400'
-            }`}
+            type="button"
+            onClick={() => setShowEffectiveCorridor((v) => !v)}
+            aria-pressed={showEffectiveCorridor}
+            className="chip chip-ghost"
           >
-            <span className="w-2 h-2 rounded-full bg-sky-400/40 inline-block"></span>
-            Zona Efectiva
+            Zona ±15 cm
           </button>
         </div>
       </div>
 
-      {/* Main SVG Ballistic Canvas */}
-      <div 
-        ref={containerRef}
-        className="relative w-full overflow-hidden bg-slate-950 rounded-xl border border-slate-800/80 select-none shadow-inner"
-        style={{ touchAction: 'none' }}
-      >
+      {/* Lienzo */}
+      <div ref={containerRef} className="relative mt-4 select-none">
         <svg
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="w-full h-auto cursor-crosshair block"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          onTouchMove={handleMouseMove}
-          onTouchEnd={handleMouseLeave}
+          width="100%"
+          height={svgHeight}
+          role="img"
+          aria-label={chartSummary}
+          className="block cursor-crosshair touch-pan-y"
+          onMouseMove={handlePointerMove}
+          onMouseLeave={() => setHoverPoint(null)}
+          onTouchStart={handlePointerMove}
+          onTouchMove={handlePointerMove}
+          onTouchEnd={() => setHoverPoint(null)}
         >
           <defs>
-            {/* Trajectory Stroke Gradient (Bright Emerald to Amber/Rose) */}
-            <linearGradient id="trajectoryGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#10b981" />
-              <stop offset="50%" stopColor="#38bdf8" />
-              <stop offset="85%" stopColor="#f59e0b" />
-              <stop offset="100%" stopColor="#ef4444" />
+            <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={C.accent} stopOpacity="0.16" />
+              <stop offset="100%" stopColor={C.accent} stopOpacity="0" />
             </linearGradient>
-
-            {/* Trajectory Under-Fill Gradient */}
-            <linearGradient id="trajectoryAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
-              <stop offset="70%" stopColor="#0284c7" stopOpacity="0.08" />
-              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.0" />
-            </linearGradient>
-
-            {/* Ground Grid Pattern */}
-            <pattern id="gridSub" width="10" height="10" patternUnits="userSpaceOnUse">
-              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#1e293b" strokeWidth="0.4" />
-            </pattern>
           </defs>
 
-          {/* Grid background */}
-          <rect x={padLeft} y={padTop} width={chartW} height={chartH} fill="url(#gridSub)" />
+          {/* Rejilla: filetes sólidos y tenues, sin discontinuos */}
+          {xTicks.map((x) => (
+            <g key={`x-${x}`}>
+              <line
+                x1={toSvgX(x)}
+                y1={padTop}
+                x2={toSvgX(x)}
+                y2={padTop + chartH}
+                stroke={C.line}
+                strokeWidth="1"
+              />
+              <text
+                x={toSvgX(x)}
+                y={padTop + chartH + fontAxis + 6}
+                fill={C.ink3}
+                fontSize={fontAxis}
+                fontFamily="var(--font-mono)"
+                textAnchor="middle"
+              >
+                {x}
+              </text>
+            </g>
+          ))}
 
-          {/* X Axis Grid Lines */}
-          {xTicks.map((x) => {
-            const sx = toSvgX(x);
-            return (
-              <g key={`x-grid-${x}`}>
-                <line
-                  x1={sx}
-                  y1={padTop}
-                  x2={sx}
-                  y2={padTop + chartH}
-                  stroke="#334155"
-                  strokeWidth={x % 20 === 0 ? "1" : "0.5"}
-                  strokeDasharray={x % 20 === 0 ? undefined : "3,3"}
-                  opacity={x === 0 ? 0.8 : 0.4}
-                />
-                {showGridNumbers && (
-                  <text
-                    x={sx}
-                    y={padTop + chartH + 16}
-                    fill="#64748b"
-                    fontSize="11"
-                    fontFamily="monospace"
-                    textAnchor="middle"
-                  >
-                    {x}m
-                  </text>
-                )}
-              </g>
-            );
-          })}
+          {yTicks.map((y) => (
+            <g key={`y-${y}`}>
+              <line
+                x1={padLeft}
+                y1={toSvgY(y)}
+                x2={padLeft + chartW}
+                y2={toSvgY(y)}
+                stroke={C.line}
+                strokeWidth="1"
+              />
+              <text
+                x={padLeft - 7}
+                y={toSvgY(y) + 3.5}
+                fill={C.ink3}
+                fontSize={fontAxis}
+                fontFamily="var(--font-mono)"
+                textAnchor="end"
+              >
+                {y}
+              </text>
+            </g>
+          ))}
 
-          {/* Y Axis Grid Lines */}
-          {yTicks.map((y) => {
-            const sy = toSvgY(y);
-            return (
-              <g key={`y-grid-${y}`}>
-                <line
-                  x1={padLeft}
-                  y1={sy}
-                  x2={padLeft + chartW}
-                  y2={sy}
-                  stroke="#334155"
-                  strokeWidth="0.5"
-                  strokeDasharray="3,3"
-                  opacity={0.4}
-                />
-                {showGridNumbers && (
-                  <text
-                    x={padLeft - 8}
-                    y={sy + 3.5}
-                    fill="#64748b"
-                    fontSize="11"
-                    fontFamily="monospace"
-                    textAnchor="end"
-                  >
-                    {y}m
-                  </text>
-                )}
-              </g>
-            );
-          })}
-
-          {/* Ground Line (y = 0) */}
+          {/* Suelo */}
           <line
             x1={padLeft}
             y1={groundY}
             x2={padLeft + chartW}
             y2={groundY}
-            stroke="#10b981"
+            stroke={C.line2}
             strokeWidth="1.5"
-            opacity="0.8"
           />
-          <rect
-            x={padLeft}
-            y={groundY}
-            width={chartW}
-            height={padTop + chartH - groundY}
-            fill="#064e3b"
-            opacity="0.15"
-          />
-          <text
-            x={padLeft + chartW - 5}
-            y={groundY - 5}
-            fill="#059669"
-            fontSize="10"
-            fontFamily="monospace"
-            textAnchor="end"
-            fontWeight="bold"
-          >
-            SUELO (0.0m)
-          </text>
 
-          {/* Effective Corridor Highlight */}
-          {showEffectiveCorridor && simulation.effectiveRangeM > 5 && (
-            <g opacity="0.12">
-              <rect
-                x={toSvgX(0)}
-                y={toSvgY(input.initialHeightM + 0.15)}
-                width={toSvgX(simulation.effectiveRangeM) - toSvgX(0)}
-                height={toSvgY(input.initialHeightM - 0.15) - toSvgY(input.initialHeightM + 0.15)}
-                fill="#38bdf8"
-                rx="4"
-              />
-            </g>
-          )}
+          {/* Corredor efectivo */}
+          {corridorPathD && <path d={corridorPathD} fill={C.accent} opacity="0.1" />}
 
-          {/* Line of Sight (Optical Axis) */}
-          {showSightLine && sightLinePathD && (
+          {/* Línea de mira */}
+          {sightLinePathD && (
             <path
               d={sightLinePathD}
               fill="none"
-              stroke="#f43f5e"
-              strokeWidth="1.2"
-              strokeDasharray="5,4"
-              opacity="0.7"
+              stroke={C.ink3}
+              strokeWidth="1"
+              strokeDasharray="5,5"
             />
           )}
 
-          {/* Trajectory Under-Fill */}
+          {/* Relleno bajo la curva */}
           {trajectoryPathD && (
             <path
               d={`${trajectoryPathD} L ${toSvgX(maxRange)},${groundY} L ${toSvgX(0)},${groundY} Z`}
-              fill="url(#trajectoryAreaGrad)"
+              fill="url(#trajFill)"
             />
           )}
 
-          {/* Ballistic Trajectory Curve */}
+          {/* Curva balística */}
           {trajectoryPathD && (
             <path
               d={trajectoryPathD}
               fill="none"
-              stroke="url(#trajectoryGrad)"
-              strokeWidth="2.8"
+              stroke={C.accent}
+              strokeWidth="2.25"
               strokeLinecap="round"
+              strokeLinejoin="round"
             />
           )}
 
-          {/* Apex Indicator Marker */}
-          {simulation.apexHeightM > input.initialHeightM && (
-            <g transform={`translate(${apexSvgX}, ${apexSvgY})`}>
-              <circle r="4.5" fill="#a855f7" stroke="#ffffff" strokeWidth="1.5" />
-              <line x1="0" y1="-5" x2="0" y2="-18" stroke="#a855f7" strokeWidth="1" strokeDasharray="2,2" />
-              <rect x="-35" y="-34" width="70" height="15" rx="3" fill="#1e1b4b" stroke="#a855f7" strokeWidth="0.8" />
-              <text x="0" y="-23" fill="#e9d5ff" fontSize="9.5" fontFamily="monospace" textAnchor="middle" fontWeight="bold">
-                Ápex {simulation.apexHeightM}m
+          {/* Ápex: punto y etiqueta de texto, sin caja de color */}
+          {simulation.apexHeightM > input.initialHeightM + 0.02 && (
+            <g>
+              <circle cx={apexSvgX} cy={apexSvgY} r="3" fill={C.accent2} />
+              <text
+                x={apexLabelX}
+                y={apexLabelY}
+                fill={C.ink2}
+                fontSize={fontAxis}
+                fontFamily="var(--font-mono)"
+                textAnchor="middle"
+              >
+                ápex {simulation.apexHeightM} m
               </text>
             </g>
           )}
 
-          {/* Max Range Contact Point */}
-          <g transform={`translate(${toSvgX(maxRange)}, ${groundY})`}>
-            <circle r="4" fill="#ef4444" stroke="#ffffff" strokeWidth="1.5" />
-            <text x="0" y="16" fill="#f87171" fontSize="10" fontFamily="monospace" textAnchor="middle" fontWeight="bold">
-              {maxRange}m
+          {/* Punto de impacto */}
+          <g>
+            <circle cx={rangeSvgX} cy={groundY} r="3" fill={C.ink2} />
+            <text
+              x={rangeSvgX + (rangeLabelAnchor === 'end' ? -6 : 0)}
+              y={groundY - 9}
+              fill={C.ink2}
+              fontSize={fontAxis}
+              fontFamily="var(--font-mono)"
+              textAnchor={rangeLabelAnchor}
+            >
+              {maxRange} m
             </text>
           </g>
 
-          {/* Target Range Pin Marker */}
+          {/* Diana seleccionada */}
           {targetPoint && (
-            <g transform={`translate(${toSvgX(targetPoint.x)}, ${toSvgY(targetPoint.y)})`}>
+            <g>
               <line
-                x1="0"
-                y1="0"
-                x2="0"
-                y2={groundY - toSvgY(targetPoint.y)}
-                stroke="#38bdf8"
-                strokeWidth="1.2"
-                strokeDasharray="3,3"
-                opacity="0.7"
-              />
-              <circle r="5" fill="#0284c7" stroke="#38bdf8" strokeWidth="2" />
-              <circle r="2" fill="#ffffff" />
-            </g>
-          )}
-
-          {/* Interactive Hover Point HUD on Chart */}
-          {hoverPoint && (
-            <g transform={`translate(${toSvgX(hoverPoint.x)}, ${toSvgY(hoverPoint.y)})`}>
-              <circle r="6" fill="#10b981" stroke="#ffffff" strokeWidth="2" className="animate-ping" opacity="0.6" />
-              <circle r="5" fill="#10b981" stroke="#ffffff" strokeWidth="2" />
-              
-              {/* Vertical line to ground */}
-              <line
-                x1="0"
-                y1="0"
-                x2="0"
-                y2={groundY - toSvgY(hoverPoint.y)}
-                stroke="#10b981"
+                x1={toSvgX(targetPoint.x)}
+                y1={toSvgY(targetPoint.y)}
+                x2={toSvgX(targetPoint.x)}
+                y2={groundY}
+                stroke={C.line2}
                 strokeWidth="1"
-                strokeDasharray="2,2"
+              />
+              <circle
+                cx={toSvgX(targetPoint.x)}
+                cy={toSvgY(targetPoint.y)}
+                r="5"
+                fill="none"
+                stroke={C.accent}
+                strokeWidth="2"
               />
             </g>
           )}
 
-          {/* Axis Labels */}
+          {/* Cursor */}
+          {hoverPoint && (
+            <g>
+              <line
+                x1={toSvgX(hoverPoint.x)}
+                y1={padTop}
+                x2={toSvgX(hoverPoint.x)}
+                y2={groundY}
+                stroke={C.line2}
+                strokeWidth="1"
+              />
+              <circle
+                cx={toSvgX(hoverPoint.x)}
+                cy={toSvgY(hoverPoint.y)}
+                r="4"
+                fill={C.accent}
+                stroke="var(--color-surface)"
+                strokeWidth="2"
+              />
+            </g>
+          )}
+
+          {/* Rótulos de ejes */}
           <text
             x={padLeft + chartW}
-            y={padTop + chartH + 34}
-            fill="#94a3b8"
-            fontSize="11"
-            fontFamily="monospace"
+            y={svgHeight - 5}
+            fill={C.ink3}
+            fontSize={fontAxis}
             textAnchor="end"
-            fontWeight="bold"
           >
-            Distancia (m) →
+            distancia (m)
           </text>
-          <text
-            x={padLeft - 10}
-            y={padTop - 12}
-            fill="#94a3b8"
-            fontSize="11"
-            fontFamily="monospace"
-            textAnchor="start"
-            fontWeight="bold"
-          >
-            ↑ Altura (m)
+          <text x={padLeft - (compact ? 26 : 40)} y={padTop - 9} fill={C.ink3} fontSize={fontAxis}>
+            altura (m)
           </text>
         </svg>
 
-        {/* Live Hover Info Floating Badge */}
-        {hoverPoint && (
-          <div 
-            className="absolute top-3 right-3 bg-slate-900/95 border border-emerald-500/60 rounded-xl p-3 shadow-2xl backdrop-blur-md text-xs font-mono z-20 pointer-events-none min-w-[200px]"
+        {/* Lectura bajo el cursor */}
+        {hoverPoint && !compact && (
+          <div
+            className={`absolute top-1 ${hoverSide === 'left' ? 'left-1' : 'right-1'}
+                        card-inset px-3 py-2.5 text-xs z-20 pointer-events-none min-w-[190px]
+                        shadow-lg shadow-black/40`}
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2 text-emerald-400 font-bold">
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" /> Posición Balística
-              </span>
-              <span>{hoverPoint.x}m</span>
+            <div className="label pb-1.5 mb-1.5 border-b border-line">
+              <span className="num text-ink">{hoverPoint.x} m</span>
             </div>
-            <div className="space-y-1 text-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Altura suelo:</span>
-                <span className="font-bold text-white">{hoverPoint.y} m</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Desvío de mira:</span>
-                <span className={`font-bold ${hoverPoint.dropRelativeToSightCm >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
-                  {hoverPoint.dropRelativeToSightCm > 0 ? `+${hoverPoint.dropRelativeToSightCm}` : hoverPoint.dropRelativeToSightCm} cm
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Velocidad:</span>
-                <span className="font-bold text-cyan-300">{Math.round(hoverPoint.velocityFps)} FPS <span className="text-slate-500 font-normal">({hoverPoint.velocityMs}m/s)</span></span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Pérdida veloc.:</span>
-                <span className="font-bold text-rose-400">-{hoverPoint.speedLossPercent}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Energía:</span>
-                <span className="font-bold text-amber-300">{hoverPoint.energyJ} J</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Tiempo vuelo:</span>
-                <span className="font-bold text-white">{hoverPoint.time} s</span>
-              </div>
-            </div>
+            <dl className="space-y-1">
+              {[
+                ['Altura', `${hoverPoint.y} m`],
+                ['Desvío de mira', formatCm(hoverPoint.dropRelativeToSightCm)],
+                ['Velocidad', `${Math.round(hoverPoint.velocityFps)} FPS`],
+                ['Energía', `${hoverPoint.energyJ} J`],
+                ['Tiempo', `${hoverPoint.time} s`]
+              ].map(([label, value]) => (
+                <div key={label} className="flex justify-between gap-4">
+                  <dt className="text-ink-3">{label}</dt>
+                  <dd className="num text-ink font-medium">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+
+        {hoverPoint && compact && (
+          <div className="absolute inset-x-0 bottom-0 bg-surface-2/95 border-t border-line px-3 py-2 z-20 pointer-events-none">
+            <dl className="grid grid-cols-3 gap-2 text-center">
+              {[
+                ['Distancia', `${hoverPoint.x} m`],
+                ['Desvío', formatCm(hoverPoint.dropRelativeToSightCm)],
+                ['Velocidad', `${Math.round(hoverPoint.velocityFps)} FPS`]
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="label">{label}</dt>
+                  <dd className="num text-[11px] text-ink font-medium mt-0.5">{value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         )}
       </div>
 
-      {/* Target Distance Inspector Bar */}
-      <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 sm:p-4 space-y-2.5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Crosshair className="w-4 h-4 text-sky-400" />
-            <span className="text-xs font-bold text-white font-mono uppercase tracking-wider">
-              Inspector de Impacto en Diana
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-mono">
-            <span className="text-slate-400">Distancia al blanco:</span>
-            <span className="px-2.5 py-0.5 rounded-md bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold">
-              {targetDistance} metros
-            </span>
-          </div>
+      {/* Leyenda */}
+      <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 text-[11px] text-ink-3">
+        <li className="flex items-center gap-2">
+          <span className="w-4 h-0.5 rounded bg-accent" aria-hidden="true" />
+          Trayectoria
+        </li>
+        {showSightLine && (
+          <li className="flex items-center gap-2">
+            <span
+              className="w-4 border-t border-dashed border-ink-3"
+              aria-hidden="true"
+            />
+            Línea de mira
+          </li>
+        )}
+        {showEffectiveCorridor && (
+          <li className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-sm bg-accent/20" aria-hidden="true" />
+            Zona efectiva
+          </li>
+        )}
+        <li className="flex items-center gap-2">
+          <span
+            className="w-3 h-3 rounded-full border-2 border-accent"
+            aria-hidden="true"
+          />
+          Diana
+        </li>
+      </ul>
+
+      {/* Inspector de diana */}
+      <div className="mt-5 pt-5 border-t border-line space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label htmlFor="target-distance-slider" className="label text-ink-2">
+            Inspector de diana
+          </label>
+          <span className="num text-sm font-semibold text-accent">
+            {Math.min(targetDistance, sliderMax)} <span className="unit">m</span>
+          </span>
         </div>
 
-        <input
+        <RangeSlider
           id="target-distance-slider"
-          type="range"
-          min="5"
-          max={Math.min(100, Math.ceil(maxRange))}
-          step="1"
-          value={Math.min(targetDistance, maxRange)}
-          onChange={(e) => setTargetDistance(parseFloat(e.target.value))}
-          className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-sky-400"
+          min={5}
+          max={sliderMax}
+          step={1}
+          value={Math.min(targetDistance, sliderMax)}
+          onChange={setTargetDistance}
+          valueText={`Diana a ${Math.min(targetDistance, sliderMax)} metros`}
         />
 
         {targetPoint && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 font-mono text-center">
-            <div className="bg-slate-900/90 rounded-lg p-2 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Tiempo al Blanco</span>
-              <span className="text-sm font-bold text-white">{targetPoint.time}s</span>
-            </div>
-            <div className="bg-slate-900/90 rounded-lg p-2 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Velocidad en Diana</span>
-              <span className="text-sm font-bold text-cyan-400">{Math.round(targetPoint.velocityFps)} <span className="text-[10px] text-cyan-500/70">FPS</span></span>
-            </div>
-            <div className="bg-slate-900/90 rounded-lg p-2 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Caída de Velocidad</span>
-              <span className="text-sm font-bold text-rose-400">-{targetPoint.speedLossPercent}%</span>
-            </div>
-            <div className="bg-slate-900/90 rounded-lg p-2 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Energía en Impacto</span>
-              <span className="text-sm font-bold text-amber-400">{targetPoint.energyJ} <span className="text-[10px] text-amber-500/70">J</span></span>
-            </div>
-            <div className="bg-slate-900/90 rounded-lg p-2 border border-slate-800 col-span-2 sm:col-span-1">
-              <span className="text-[10px] text-slate-400 block font-sans">Desvío de Altura</span>
-              <span className={`text-sm font-bold ${Math.abs(targetPoint.dropRelativeToSightCm) <= 15 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {targetPoint.dropRelativeToSightCm > 0 ? `+${targetPoint.dropRelativeToSightCm}` : targetPoint.dropRelativeToSightCm} cm
-              </span>
-            </div>
-          </div>
+          <dl className="card-inset grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-line overflow-hidden">
+            {[
+              { label: 'Tiempo', value: `${targetPoint.time} s` },
+              { label: 'Velocidad', value: `${Math.round(targetPoint.velocityFps)} FPS` },
+              { label: 'Pérdida', value: `−${targetPoint.speedLossPercent} %` },
+              { label: 'Energía', value: `${targetPoint.energyJ} J` },
+              {
+                label: 'Desvío',
+                value: formatCm(targetPoint.dropRelativeToSightCm),
+                tone:
+                  Math.abs(targetPoint.dropRelativeToSightCm) <= 15 ? 'text-accent' : 'text-warn'
+              }
+            ].map((item) => (
+              <div key={item.label} className="bg-surface-2 px-3 py-2.5">
+                <dt className="label">{item.label}</dt>
+                <dd className={`num text-sm font-semibold mt-1 ${item.tone ?? 'text-ink'}`}>
+                  {item.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
         )}
       </div>
-
-    </div>
+    </section>
   );
 };
